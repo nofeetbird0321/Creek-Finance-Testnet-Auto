@@ -1,0 +1,26 @@
+{
+  "name": "creek-finance-bot",
+  "version": "1.0.0",
+  "description": "Auto Bot Creek Finance - SUI Testnet (24 Hour Loop)",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "keywords": [
+    "blockchain",
+    "sui",
+    "automation",
+    "crypto",
+    "bot"
+  ],
+  "author": "AI Generated",
+  "license": "MIT",
+  "dependencies": {
+    "@mysten/sui.js": "^0.54.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
