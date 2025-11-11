@@ -32,18 +32,24 @@ def create_pysui_config():
     # Create pysui configuration structure
     # Based on pysui 0.92+ requirements
     config_data = {
-        "version": "0.92.0",
+        "version": "1.1.0",
         "sui_binary": "",
         "group_active": "sui_gql_config",
         "groups": [
             {
                 "group_name": "sui_gql_config",
-                "using_profile": "",
+                "using_profile": "testnet",
                 "using_address": "",
                 "alias_list": [],
                 "key_list": [],
                 "address_list": [],
-                "profiles": [],
+                "profiles": [
+                    {
+                        "profile_name": "testnet",
+                        "url": "https://sui-testnet.mystenlabs.com/graphql",
+                        "faucet_url": "https://faucet.testnet.sui.io/v2/gas"
+                    }
+                ],
                 "protocol": 1  # 1 = GRAPHQL, 2 = GRPC, 3 = OTHER
             }
         ]
