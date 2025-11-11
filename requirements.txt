@@ -1,7 +1,7 @@
 # Creek Finance Bot - Python Dependencies
 
-# SUI SDK for Python
-pysui>=0.65.0
+# SUI SDK for Python - Updated to 0.92+ for GraphQL support
+pysui>=0.92.0
 
 # Additional utilities
 python-dotenv>=1.0.0
