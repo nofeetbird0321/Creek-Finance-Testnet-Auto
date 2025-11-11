@@ -1,6 +1,8 @@
 # Creek Finance Automation Bot - Python Version
 
-🤖 Python implementation of Creek Finance Testnet automation bot using **pysui**
+🤖 Python implementation of Creek Finance Testnet automation bot using **pysui 0.92+**
+
+**✨ Updated for pysui 0.92+**: This version uses the new GraphQL API. JSON RPC support is deprecated.
 
 ## ⚠️ IMPORTANT SECURITY NOTES
 
@@ -43,9 +45,11 @@ pip install -r requirements.txt
 ```
 
 Dependencies:
-- `pysui>=0.65.0` - SUI SDK for Python
+- `pysui>=0.92.0` - SUI SDK for Python (GraphQL API)
 - `python-dotenv>=1.0.0` - Environment variable management
 - `requests>=2.31.0` - HTTP requests
+
+**Important**: pysui 0.92+ uses GraphQL/gRPC instead of the deprecated JSON RPC API.
 
 ## 📁 File Structure
 
@@ -217,16 +221,19 @@ If you get rate limited:
 
 ## 📝 Implementation Status
 
-### ✅ Implemented
-- Configuration management
+### ✅ Implemented (Updated for pysui 0.92+)
+- Configuration management with PysuiConfiguration
 - Wallet management and key import
-- SUI balance checking and faucet requests
-- XAUM and USDC faucet claims
+- SUI balance checking using GraphQL queries
+- Coin fetching using GraphQL queries  
+- XAUM and USDC faucet claims with GraphQL transactions
 - Health factor calculation
 - Balance tracking and reporting
 - 24-hour scheduling loop
 - Proxy support
 - Error handling
+- **GraphQL client integration (SyncGqlClient)**
+- **GraphQL transaction builder (SuiTransaction from pgql_sync_txn)**
 
 ### 🚧 To Be Implemented
 The following features from the JavaScript version need full implementation:
@@ -262,7 +269,7 @@ These require deeper integration with pysui's transaction builder and Move call 
 
 2. **Transaction Building**
    - JavaScript: `TransactionBlock` from `@mysten/sui.js`
-   - Python: `SyncTransaction` from `pysui`
+   - Python (0.92+): `SuiTransaction` from `pysui.sui.sui_pgql.pgql_sync_txn`
 
 3. **Error Handling**
    - JavaScript: Try-catch with `.status.status`
@@ -270,17 +277,21 @@ These require deeper integration with pysui's transaction builder and Move call 
 
 4. **Client Initialization**
    - JavaScript: `new SuiClient({ url })`
-   - Python: `SyncClient(SuiConfig)`
+   - Python (0.92+): `SyncGqlClient(pysui_config=PysuiConfiguration(...))`
+   
+5. **API Protocol**
+   - JavaScript: JSON RPC
+   - Python (0.92+): GraphQL/gRPC (JSON RPC deprecated)
 
 ### API Mapping
 
-| JavaScript | Python |
-|------------|--------|
-| `suiClient.getBalance()` | `client.get_gas()` |
-| `suiClient.getCoins()` | `client.get_coin()` |
-| `TransactionBlock()` | `SyncTransaction()` |
-| `tx.moveCall()` | `txn.move_call()` |
-| `signAndExecuteTransactionBlock()` | `txn.execute()` |
+| JavaScript | Python (0.65) | Python (0.92+) |
+|------------|--------------|----------------|
+| `suiClient.getBalance()` | `client.get_gas()` | `client.execute_query_node(with_node=client.get_address_owner_balance())` |
+| `suiClient.getCoins()` | `client.get_coin()` | `client.execute_query_node(with_node=client.get_coins())` |
+| `TransactionBlock()` | `SyncTransaction()` | `SuiTransaction()` from `pgql_sync_txn` |
+| `tx.moveCall()` | `txn.move_call()` | `txn.move_call()` |
+| `signAndExecuteTransactionBlock()` | `txn.execute()` | `client.execute_query_node(with_node=client.execute_tx())` |
 
 ## 📚 Additional Resources
 
