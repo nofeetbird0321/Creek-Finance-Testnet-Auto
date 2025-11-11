@@ -4,7 +4,33 @@ This guide helps you migrate from the JavaScript version to the Python version o
 
 ## Overview
 
-The Python version (`creek_bot.py`) is a rewrite of the Node.js version (`index.js`) using the `pysui` library instead of `@mysten/sui.js`.
+The Python version (`creek_bot.py`) is a rewrite of the Node.js version (`index.js`) using the `pysui 0.92+` library instead of `@mysten/sui.js`.
+
+**✨ Updated for pysui 0.92+**: The Python version now uses the GraphQL API. JSON RPC support is deprecated in pysui 0.92+.
+
+## ⚠️ Important: pysui 0.92+ Breaking Changes
+
+As of pysui 0.92.0 (released October 2025), there are significant API changes:
+
+### What Changed
+- **JSON RPC is End-of-Life (EOL)**: All JSON RPC methods are deprecated
+- **GraphQL/gRPC Required**: Must use GraphQL or gRPC clients
+- **New Client Classes**: `SyncGqlClient` and `AsyncGqlClient` replace `SyncClient` and `AsyncClient`
+- **New Transaction Builder**: `SuiTransaction` from `pgql_sync_txn` module
+- **Query Pattern**: Use `execute_query_node(with_node=...)` for all queries
+
+### Migration Impact
+If you have code using pysui 0.65-0.91:
+1. Replace `SyncClient` with `SyncGqlClient`
+2. Replace `SuiConfig` with `PysuiConfiguration`
+3. Update all queries to use `execute_query_node()`
+4. Update transaction execution to use GraphQL methods
+5. Update imports from `pysui.sui.sui_txn` to `pysui.sui.sui_pgql.pgql_sync_txn`
+
+### Resources
+- [pysui 0.92 Release Notes](https://pypi.org/project/pysui/)
+- [pysui GraphQL Documentation](https://pysui.readthedocs.io/)
+- [pysui GitHub Repository](https://github.com/FrankC01/pysui)
 
 ## Why Migrate to Python?
 
@@ -21,8 +47,8 @@ The Python version (`creek_bot.py`) is a rewrite of the Node.js version (`index.
 - npm packages: `@mysten/sui.js`, `chalk`, `undici`
 
 ### Python Version
-- Python 3.8+
-- pip packages: `pysui`, `requests`, `python-dotenv`
+- Python 3.10+ (required by pysui 0.92+)
+- pip packages: `pysui>=0.92.0`, `requests`, `python-dotenv`
 
 ## Installation Steps
 
@@ -78,12 +104,20 @@ import { TransactionBlock } from '@mysten/sui.js/transactions';
 import { SuiClient } from '@mysten/sui.js/client';
 ```
 
-**Python (Imports):**
+**Python (0.65 - Deprecated):**
 ```python
 from pysui import SuiConfig, SyncClient
 from pysui.sui.sui_types.scalars import ObjectID, SuiString
 from pysui.sui.sui_types.address import SuiAddress
 from pysui.sui.sui_txn import SyncTransaction
+```
+
+**Python (0.92+ - Current):**
+```python
+from pysui import PysuiConfiguration, SyncGqlClient
+from pysui.sui.sui_types.scalars import ObjectID, SuiString
+from pysui.sui.sui_types.address import SuiAddress
+from pysui.sui.sui_pgql.pgql_sync_txn import SuiTransaction
 ```
 
 ### 2. Client Initialization
@@ -93,11 +127,20 @@ from pysui.sui.sui_txn import SyncTransaction
 const suiClient = new SuiClient({ url: CONFIG.RPC_URL });
 ```
 
-**Python:**
+**Python (0.65 - Deprecated):**
 ```python
 config = SuiConfig.testnet_config()
 config.rpc_url = Config.RPC_URL
 client = SyncClient(config)
+```
+
+**Python (0.92+ - Current):**
+```python
+pysui_config = PysuiConfiguration(group_name="testnet", make_default=True)
+client = SyncGqlClient(
+    pysui_config=pysui_config,
+    default_header={"rpc-url": Config.RPC_URL}
+)
 ```
 
 ### 3. Wallet Import
@@ -123,12 +166,23 @@ const balance = await suiClient.getBalance({ owner: address });
 return parseInt(balance.totalBalance) / CONFIG.MIST_PER_SUI;
 ```
 
-**Python:**
+**Python (0.65 - Deprecated):**
 ```python
 result = self.client.get_gas(address)
 if result.is_ok():
     total = sum(int(coin.balance) for coin in result.result_data.data)
     return total / Config.MIST_PER_SUI
+```
+
+**Python (0.92+ - Current):**
+```python
+result = self.client.execute_query_node(
+    with_node=self.client.get_address_owner_balance(owner=address)
+)
+if result.is_ok():
+    balance_data = result.result_data
+    if hasattr(balance_data, 'total_balance'):
+        return int(balance_data.total_balance) / Config.MIST_PER_SUI
 ```
 
 ### 5. Getting Coins
@@ -142,10 +196,23 @@ const coins = await suiClient.getCoins({
 return coins.data;
 ```
 
-**Python:**
+**Python (0.65 - Deprecated):**
 ```python
 result = self.client.get_coin(address, coin_type)
 if result.is_ok():
+    return result.result_data.data
+return []
+```
+
+**Python (0.92+ - Current):**
+```python
+result = self.client.execute_query_node(
+    with_node=self.client.get_coins(
+        coin_type=coin_type,
+        owner=address
+    )
+)
+if result.is_ok() and hasattr(result.result_data, 'data'):
     return result.result_data.data
 return []
 ```
@@ -166,9 +233,24 @@ tx.moveCall({
 tx.setGasBudget(CONFIG.GAS_BUDGET);
 ```
 
-**Python:**
+**Python (0.65 - Deprecated):**
 ```python
 txn = SyncTransaction(client=self.client, initial_sender=SuiAddress(address))
+txn.move_call(
+    target=f"{Config.FAUCET_PACKAGE}::coin_xaum::mint",
+    arguments=[
+        ObjectID(Config.XAUM_SHARED_OBJECT),
+        SuiString('1000000000'),
+        SuiAddress(address)
+    ]
+)
+```
+
+**Python (0.92+ - Current):**
+```python
+from pysui.sui.sui_pgql.pgql_sync_txn import SuiTransaction
+
+txn = SuiTransaction(client=self.client, initial_sender=SuiAddress(address))
 txn.move_call(
     target=f"{Config.FAUCET_PACKAGE}::coin_xaum::mint",
     arguments=[
@@ -194,12 +276,26 @@ if (result.effects?.status?.status === 'success') {
 }
 ```
 
-**Python:**
+**Python (0.65 - Deprecated):**
 ```python
 result = txn.execute(gas_budget=str(Config.GAS_BUDGET))
 
 if result.is_ok():
     print('Success!')
+```
+
+**Python (0.92+ - Current):**
+```python
+result = self.client.execute_query_node(
+    with_node=self.client.execute_tx(
+        tx_bytes=txn,
+        signer=keypair
+    )
+)
+
+if result.is_ok():
+    tx_digest = getattr(result.result_data, 'digest', 'unknown')
+    print(f'Success! TX: {tx_digest}')
 ```
 
 ### 8. Async/Await

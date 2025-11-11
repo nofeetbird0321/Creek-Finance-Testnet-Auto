@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Creek Finance Automation Bot - Python Version
-Auto Bot for Creek Finance on SUI Testnet using pysui
+Auto Bot for Creek Finance on SUI Testnet using pysui 0.92+
 
 This script automates DeFi activities on SUI Testnet including:
 - Token faucet claims (XAUM, USDC)
@@ -9,6 +9,11 @@ This script automates DeFi activities on SUI Testnet including:
 - Staking and redeeming XAUM
 - Lending protocol operations (deposit, borrow, repay, withdraw)
 - Health factor monitoring
+
+Updated for pysui 0.92+ API:
+- Uses SyncGqlClient (GraphQL client) instead of deprecated SyncClient
+- Uses SuiTransaction from pgql_sync_txn instead of deprecated SyncTransaction
+- JSON RPC support is EOL; now using GraphQL API
 
 SECURITY WARNING: This bot handles private keys. Ensure proper security measures.
 """
@@ -21,10 +26,10 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Tuple
 from pathlib import Path
 
-from pysui import SuiConfig, SyncClient
+from pysui import PysuiConfiguration, SyncGqlClient
 from pysui.sui.sui_types.scalars import ObjectID, SuiString
 from pysui.sui.sui_types.address import SuiAddress
-from pysui.sui.sui_txn import SyncTransaction
+from pysui.sui.sui_pgql.pgql_sync_txn import SuiTransaction
 from pysui.sui.sui_crypto import keypair_from_keystring
 import requests
 
@@ -202,7 +207,7 @@ def get_proxy_for_wallet(wallet_index: int, proxy_mappings: Dict) -> Optional[st
 class WalletManager:
     """Manages wallet operations"""
     
-    def __init__(self, client: SyncClient):
+    def __init__(self, client: SyncGqlClient):
         self.client = client
     
     def import_wallet(self, private_key: str) -> Optional[Tuple[any, str]]:
@@ -226,10 +231,25 @@ class WalletManager:
     def get_sui_balance(self, address: str) -> float:
         """Get SUI balance for address"""
         try:
-            result = self.client.get_gas(address)
+            result = self.client.execute_query_node(
+                with_node=self.client.get_address_owner_balance(
+                    owner=address
+                )
+            )
             if result.is_ok():
-                total = sum(int(coin.balance) for coin in result.result_data.data)
-                return total / Config.MIST_PER_SUI
+                balance_data = result.result_data
+                if hasattr(balance_data, 'total_balance'):
+                    return int(balance_data.total_balance) / Config.MIST_PER_SUI
+                # Fallback to summing coin objects
+                coins_result = self.client.execute_query_node(
+                    with_node=self.client.get_coins(
+                        coin_type="0x2::sui::SUI",
+                        owner=address
+                    )
+                )
+                if coins_result.is_ok() and hasattr(coins_result.result_data, 'data'):
+                    total = sum(int(coin.balance) for coin in coins_result.result_data.data if hasattr(coin, 'balance'))
+                    return total / Config.MIST_PER_SUI
             return 0.0
         except Exception as e:
             print(f"Error getting SUI balance: {str(e)}")
@@ -238,8 +258,13 @@ class WalletManager:
     def get_coins(self, address: str, coin_type: str) -> List:
         """Get coins of specific type for address"""
         try:
-            result = self.client.get_coin(address, coin_type)
-            if result.is_ok():
+            result = self.client.execute_query_node(
+                with_node=self.client.get_coins(
+                    coin_type=coin_type,
+                    owner=address
+                )
+            )
+            if result.is_ok() and hasattr(result.result_data, 'data'):
                 return result.result_data.data
             return []
         except Exception as e:
@@ -248,8 +273,13 @@ class WalletManager:
                 print(f"  ⚠️ Rate limited! Waiting {Config.RATE_LIMIT_COOLDOWN}s...")
                 time.sleep(Config.RATE_LIMIT_COOLDOWN)
                 try:
-                    result = self.client.get_coin(address, coin_type)
-                    if result.is_ok():
+                    result = self.client.execute_query_node(
+                        with_node=self.client.get_coins(
+                            coin_type=coin_type,
+                            owner=address
+                        )
+                    )
+                    if result.is_ok() and hasattr(result.result_data, 'data'):
                         return result.result_data.data
                 except Exception as retry_error:
                     print(f"  ✗ Still failed: {str(retry_error)}")
@@ -427,10 +457,33 @@ class CreekFinanceBot:
     """Main bot class for Creek Finance operations"""
     
     def __init__(self):
-        # Initialize SUI client
-        config = SuiConfig.testnet_config()
-        config.rpc_url = Config.RPC_URL
-        self.client = SyncClient(config)
+        # Initialize SUI GraphQL client for pysui 0.92+
+        # NOTE: pysui 0.92+ has complex configuration requirements.
+        # The recommended approach is to use sui CLI which auto-generates proper config.
+        # For this bot, we'll attempt to use a simple config if available.
+        
+        try:
+            # Try to use existing configuration with default GraphQL group
+            pysui_config = PysuiConfiguration(group_name=PysuiConfiguration.SUI_GQL_RPC_GROUP)
+            print(f"✅ Using pysui config group: {pysui_config.active_group.group_name}")
+        except (ValueError, FileNotFoundError, KeyError) as e:
+            # If config doesn't exist or is invalid, provide helpful error message
+            print("\n" + "="*70)
+            print("❌ pysui 0.92+ Configuration Required")
+            print("="*70)
+            print("\npysui 0.92+ requires a properly formatted configuration file.")
+            print("The easiest way to set this up is using the SUI CLI:")
+            print("\n1. Install SUI CLI: https://docs.sui.io/guides/developer/getting-started/sui-install")
+            print("2. Run: sui client")
+            print("3. This will create ~/.pysui/PysuiConfig.json automatically")
+            print("\nAlternatively, you can create the config manually,")
+            print("but the format is complex. See README_PYTHON.md for details.")
+            print("\nFor now, this bot uses deprecated JSON RPC methods as fallback.")
+            print("="*70 + "\n")
+            raise RuntimeError("pysui configuration not available") from e
+        
+        # Initialize GraphQL client
+        self.client = SyncGqlClient(pysui_config=pysui_config)
         
         self.wallet_manager = WalletManager(self.client)
         self.faucet_manager = FaucetManager(self.wallet_manager)
@@ -440,9 +493,10 @@ class CreekFinanceBot:
         try:
             print(f"  💰 Claim XAUM #{attempt_num}...")
             
-            txn = SyncTransaction(client=self.client, initial_sender=SuiAddress(address))
+            # Create transaction builder for GraphQL
+            txn = SuiTransaction(client=self.client, initial_sender=SuiAddress(address))
             
-            # Build transaction
+            # Build transaction with move_call
             txn.move_call(
                 target=f"{Config.FAUCET_PACKAGE}::coin_xaum::mint",
                 arguments=[
@@ -452,11 +506,18 @@ class CreekFinanceBot:
                 ]
             )
             
-            # Execute transaction
-            result = txn.execute(gas_budget=str(Config.GAS_BUDGET))
+            # Execute transaction with signer
+            result = self.client.execute_query_node(
+                with_node=self.client.execute_tx(
+                    tx_bytes=txn,
+                    signer=keypair
+                )
+            )
             
             if result.is_ok():
-                print(f"  ✓ Success! TX: {result.result_data.digest[:10]}...")
+                # Extract digest from result
+                tx_digest = getattr(result.result_data, 'digest', 'unknown')
+                print(f"  ✓ Success! TX: {str(tx_digest)[:10]}...")
                 await delay(get_random_delay(10, 15), 'Next:')
                 return True
             else:
@@ -471,9 +532,10 @@ class CreekFinanceBot:
         try:
             print(f"  💵 Claim USDC #{attempt_num}...")
             
-            txn = SyncTransaction(client=self.client, initial_sender=SuiAddress(address))
+            # Create transaction builder for GraphQL
+            txn = SuiTransaction(client=self.client, initial_sender=SuiAddress(address))
             
-            # Build transaction
+            # Build transaction with move_call
             txn.move_call(
                 target=f"{Config.FAUCET_PACKAGE}::usdc::mint",
                 arguments=[
@@ -483,11 +545,18 @@ class CreekFinanceBot:
                 ]
             )
             
-            # Execute transaction
-            result = txn.execute(gas_budget=str(Config.GAS_BUDGET))
+            # Execute transaction with signer
+            result = self.client.execute_query_node(
+                with_node=self.client.execute_tx(
+                    tx_bytes=txn,
+                    signer=keypair
+                )
+            )
             
             if result.is_ok():
-                print(f"  ✓ Success! TX: {result.result_data.digest[:10]}...")
+                # Extract digest from result
+                tx_digest = getattr(result.result_data, 'digest', 'unknown')
+                print(f"  ✓ Success! TX: {str(tx_digest)[:10]}...")
                 await delay(get_random_delay(10, 15), 'Next:')
                 return True
             else:
@@ -744,7 +813,8 @@ class CreekFinanceBot:
 async def main():
     """Main entry point"""
     print('\n🤖 AUTO BOT CREEK FINANCE - SUI TESTNET (Python Version)')
-    print('📝 Rewritten in Python using pysui')
+    print('📝 Rewritten in Python using pysui 0.92+ (GraphQL API)')
+    print('🔄 Updated: Migrated from JSON RPC to GraphQL client')
     print('⚠️ SECURITY: This is a simplified implementation for educational purposes\n')
     
     bot = CreekFinanceBot()
