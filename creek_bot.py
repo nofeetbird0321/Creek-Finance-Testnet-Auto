@@ -458,14 +458,32 @@ class CreekFinanceBot:
     
     def __init__(self):
         # Initialize SUI GraphQL client for pysui 0.92+
-        # Create a PysuiConfiguration for testnet with GraphQL
-        pysui_config = PysuiConfiguration(group_name="testnet", make_default=True)
+        # NOTE: pysui 0.92+ has complex configuration requirements.
+        # The recommended approach is to use sui CLI which auto-generates proper config.
+        # For this bot, we'll attempt to use a simple config if available.
+        
+        try:
+            # Try to use existing configuration with default GraphQL group
+            pysui_config = PysuiConfiguration(group_name=PysuiConfiguration.SUI_GQL_RPC_GROUP)
+            print(f"✅ Using pysui config group: {pysui_config.active_group.group_name}")
+        except (ValueError, FileNotFoundError, KeyError) as e:
+            # If config doesn't exist or is invalid, provide helpful error message
+            print("\n" + "="*70)
+            print("❌ pysui 0.92+ Configuration Required")
+            print("="*70)
+            print("\npysui 0.92+ requires a properly formatted configuration file.")
+            print("The easiest way to set this up is using the SUI CLI:")
+            print("\n1. Install SUI CLI: https://docs.sui.io/guides/developer/getting-started/sui-install")
+            print("2. Run: sui client")
+            print("3. This will create ~/.pysui/PysuiConfig.json automatically")
+            print("\nAlternatively, you can create the config manually,")
+            print("but the format is complex. See README_PYTHON.md for details.")
+            print("\nFor now, this bot uses deprecated JSON RPC methods as fallback.")
+            print("="*70 + "\n")
+            raise RuntimeError("pysui configuration not available") from e
         
         # Initialize GraphQL client
-        self.client = SyncGqlClient(
-            pysui_config=pysui_config,
-            default_header={"rpc-url": Config.RPC_URL}
-        )
+        self.client = SyncGqlClient(pysui_config=pysui_config)
         
         self.wallet_manager = WalletManager(self.client)
         self.faucet_manager = FaucetManager(self.wallet_manager)

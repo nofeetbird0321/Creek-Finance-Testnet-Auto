@@ -92,6 +92,40 @@ http://proxy3:port
 
 ## 🏃 Running the Bot
 
+### First-Time Setup
+
+**pysui 0.92+ requires a configuration file**. Choose one of these options:
+
+**Option 1: Use the setup script (Recommended)**
+```bash
+python setup_pysui_config.py
+```
+
+**Option 2: Use SUI CLI** (if installed)
+```bash
+sui client
+# This will automatically create ~/.pysui/PysuiConfig.json
+```
+
+**Option 3: Manual configuration**
+Create `~/.pysui/PysuiConfig.json` with:
+```json
+{
+  "active_group": "sui_gql_config",
+  "groups": [{
+    "group_name": "sui_gql_config",
+    "rpc_url": "https://sui-testnet.mystenlabs.com/graphql",
+    "using_profile": "",
+    "using_address": "",
+    "alias_list": [],
+    "key_list": [],
+    "address_list": [],
+    "profiles": [],
+    "protocol": "graphql"
+  }]
+}
+```
+
 ### Basic Usage
 
 ```bash
